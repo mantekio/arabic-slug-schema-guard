@@ -1,6 +1,6 @@
 # Arabic Slug Schema Guard
 
-[![License: GPL v2](https://img.shields.io/badge/License-GPLv2-blue.svg)](LICENSE)
+[![Packagist Version](https://img.shields.io/packagist/v/mantekio/arabic-slug-schema-guard)](https://packagist.org/packages/mantekio/arabic-slug-schema-guard) [![License: GPL v2](https://img.shields.io/badge/License-GPLv2-blue.svg)](LICENSE)
 
 A WordPress **must-use plugin** that stops core updates from silently truncating long Arabic (and other non-Latin) URLs.
 
