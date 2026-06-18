@@ -1,0 +1,21 @@
+{
+  "name": "mantekio/arabic-slug-schema-guard",
+  "description": "WordPress must-use plugin that stops core updates from truncating long Arabic URLs (the VARCHAR(200) slug-column trap).",
+  "type": "wordpress-muplugin",
+  "license": "GPL-2.0-or-later",
+  "homepage": "https://github.com/mantekio/arabic-slug-schema-guard",
+  "keywords": ["wordpress", "muplugin", "arabic", "slug", "permalink", "dbdelta", "i18n", "rtl"],
+  "authors": [
+    {
+      "name": "ManTek Technologies",
+      "homepage": "https://www.mantek.io"
+    }
+  ],
+  "support": {
+    "issues": "https://github.com/mantekio/arabic-slug-schema-guard/issues",
+    "docs": "https://www.mantek.io/insights/wordpress-arabic-slug-truncation"
+  },
+  "require": {
+    "composer/installers": "^1.0 || ^2.0"
+  }
+}
