@@ -6,7 +6,8 @@
  *              WordPress core database upgrades, so long URL-encoded Arabic slugs
  *              are never truncated. Prevention-first: dbDelta never truncates,
  *              because the canonical schema it diffs against already says 1024.
- * Version:     1.0.0
+ *              The slug fork self-tests against core on each update and can fail safe.
+ * Version:     1.1.0
  * Author:      ManTek Technologies
  * Author URI:  https://www.mantek.io
  * License:     GPL-2.0-or-later
@@ -25,6 +26,7 @@ const ASG_COLUMN_LEN = 1024;  // physical column width (bytes)
 const ASG_SLUG_BYTES = 1000;  // max generated slug length, under the column width
 const ASG_SCHEMA_SIG = 'post_name:1024;slug:1024';
 // define( 'ASG_ALERT_EMAIL', 'ops@example.com' );  // optional, set in wp-config.php
+// define( 'ASG_L2_FAILSAFE', true );               // optional: on Layer-2 drift, fall back to core (slugs cap at 200) until you re-sync
 
 /* LAYER 1 — PREVENTION
  * Rewrite the canonical CREATE TABLE dbDelta diffs against, so "desired" already
@@ -45,9 +47,17 @@ add_filter( 'dbdelta_create_queries', function ( $queries ) {
 
 /* LAYER 2 — GENERATION
  * Core caps new slugs at 200 bytes via utf8_uri_encode($title, 200). Swap in a
- * copy of sanitize_title_with_dashes() whose only change is the byte budget. */
-remove_filter( 'sanitize_title', 'sanitize_title_with_dashes' );
-add_filter( 'sanitize_title', 'asg_sanitize_title_with_dashes', 10, 3 );
+ * copy of sanitize_title_with_dashes() whose only change is the byte budget.
+ * Installed conditionally: if the drift guard (below) flagged THIS core version
+ * and ASG_L2_FAILSAFE is on, stay on core's default (caps at 200 — degraded but
+ * safe and known) rather than run a fork we know has drifted. */
+if ( get_option( 'asg_l2_status' ) === 'drift:' . $GLOBALS['wp_version']
+     && defined( 'ASG_L2_FAILSAFE' ) && ASG_L2_FAILSAFE ) {
+    // Known-drifted on this core version → leave core's generator in place.
+} else {
+    remove_filter( 'sanitize_title', 'sanitize_title_with_dashes' );
+    add_filter( 'sanitize_title', 'asg_sanitize_title_with_dashes', 10, 3 );
+}
 
 function asg_sanitize_title_with_dashes( $title, $raw_title = '', $context = 'display' ) {
     $title = strip_tags( $title );
@@ -78,6 +88,59 @@ function asg_sanitize_title_with_dashes( $title, $raw_title = '', $context = 'di
     $title = preg_replace( '/\s+/', '-', $title );
     $title = preg_replace( '|-+|', '-', $title );
     return trim( $title, '-' );
+}
+
+/* LAYER 2 DRIFT GUARD — self-test the fork against core's live implementation.
+ * remove_filter() only unhooks sanitize_title_with_dashes(); the function stays
+ * callable, so we use core's CURRENT code as a live oracle and assert our fork
+ * still agrees on SHORT inputs (where neither byte cap engages — the only thing
+ * the fork changed). Any divergence == core altered the cleanup logic and our
+ * copy has drifted. Runs once per core version; shouts, and can fail safe. */
+add_action( 'admin_init', 'asg_guard_layer2_drift' );
+
+function asg_guard_layer2_drift() {
+    $ok      = 'ok:' . $GLOBALS['wp_version'];
+    $drifted = 'drift:' . $GLOBALS['wp_version'];
+    if ( in_array( get_option( 'asg_l2_status' ), array( $ok, $drifted ), true ) ) {
+        return;  // already settled for this core version
+    }
+    if ( ! function_exists( 'sanitize_title_with_dashes' ) ) {
+        return;  // core refactored it away — no oracle to diff against; the fork
+                 // still runs as a standalone copy (it needs no removed function).
+    }
+
+    // Deliberately SHORT fixtures so neither length cap fires — any difference is
+    // pure cleanup-logic drift, not the byte budget.
+    $fixtures = array(
+        'الذكاء الاصطناعي',
+        'عاجل: تطورات «مهمة» اليوم',
+        'Mixed عربي + English — dash',
+        'foo/bar &mdash; baz',
+        'UPPER   multiple   spaces',
+        '%d8%a7 pre-encoded octet',
+    );
+
+    $drift = array();
+    foreach ( $fixtures as $f ) {
+        $core = sanitize_title_with_dashes( $f, $f, 'save' );
+        $ours = asg_sanitize_title_with_dashes( $f, $f, 'save' );
+        if ( $core !== $ours ) {
+            $drift[] = "in=[{$f}] core=[{$core}] ours=[{$ours}]";
+        }
+    }
+
+    if ( $drift ) {
+        $msg = "[Arabic Slug Schema Guard] Layer-2 DRIFT on WP {$GLOBALS['wp_version']}: core "
+             . "sanitize_title_with_dashes() no longer matches our fork — re-sync the copy.\n"
+             . implode( "\n", $drift );
+        error_log( $msg );
+        if ( defined( 'ASG_ALERT_EMAIL' ) && function_exists( 'wp_mail' ) ) {
+            wp_mail( ASG_ALERT_EMAIL, 'WP slug Layer-2 drift: ' . wp_parse_url( home_url(), PHP_URL_HOST ), $msg );
+        }
+        update_option( 'asg_l2_status', $drifted, true );  // autoload — the fail-safe reads it every request
+        return;  // do NOT cache "ok" while drifted
+    }
+    update_option( 'asg_l2_status', $ok, true );
 }
 
 /* LAYER 3 — DE-DUPLICATION (optional)

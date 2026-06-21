@@ -17,7 +17,7 @@ Widening the column alone isn't enough, either: WordPress hard-codes `200` in **
 ## What it does
 
 - **Prevents the shrink** (Layer 1) — filters `dbdelta_create_queries` so dbDelta's *desired* schema already says `1024`; it never emits a destructive `CHANGE COLUMN`. Covers the admin DB-upgrade screen, background auto-updates, and `wp core update-db`.
-- **Stops new slugs truncating** (Layer 2) — replaces `sanitize_title_with_dashes()` with a byte-for-byte copy that raises the generation cap.
+- **Stops new slugs truncating** (Layer 2) — replaces `sanitize_title_with_dashes()` with a byte-for-byte copy that raises the generation cap. The copy **self-tests against core** on each update: it diffs the fork against core's live function on short inputs (where neither cap fires), so if core ever rewrites that function it alerts — and can fall back to core's generator — instead of drifting silently.
 - **Verifies + alerts** (tripwire) — after every core update it checks the real column widths, logs and (optionally) emails on a revert, and exposes a `wp asg verify` CLI command for cron.
 
 Layer 3 (collision de-dup) only fires on slug clashes and is left optional — see the write-up.
@@ -62,7 +62,8 @@ Define before the plugin loads (e.g. in `wp-config.php`), or edit the constants 
 |---|---|---|
 | `ASG_COLUMN_LEN` | `1024` | Physical column width (bytes) |
 | `ASG_SLUG_BYTES` | `1000` | Max generated slug length — under the column, leaving room for a `-2` collision suffix |
-| `ASG_ALERT_EMAIL` | *(unset)* | If defined, the tripwire emails this address when a column reverts |
+| `ASG_ALERT_EMAIL` | *(unset)* | If defined, the tripwire (and the Layer-2 self-test) email this address on a column revert or fork drift |
+| `ASG_L2_FAILSAFE` | *(unset)* | If defined truthy, on Layer-2 drift fall back to core's generator (slugs cap at 200) until you re-sync the copy |
 
 ## Verifying
 
