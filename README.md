@@ -8,19 +8,19 @@ A WordPress **must-use plugin** that stops core updates from silently truncating
 
 ## The problem
 
-WordPress stores post and term slugs **percent-encoded** in `VARCHAR(200)` columns (`wp_posts.post_name`, `wp_terms.slug`). Each Arabic character costs about **six bytes** once URL-encoded, so a `VARCHAR(200)` column holds only ~33 Arabic characters — and Arabic publishers widen the columns to `VARCHAR(1024)`.
+WordPress stores post and term slugs **percent-encoded** in `VARCHAR(200)` columns (`wp_posts.post_name`, `wp_terms.slug`). Each Arabic character costs about **six bytes** once URL-encoded, so a `VARCHAR(200)` column holds only ~33 Arabic characters, and Arabic publishers widen the columns to `VARCHAR(1024)`.
 
-The trap: on every major core update, `dbDelta()` reconciles the live schema against WordPress's canonical schema and **shrinks `VARCHAR(1024)` back to `VARCHAR(200)`**. Unlike `TEXT`/`BLOB`, `VARCHAR` has no downsize protection, so the truncation is silent and **unrecoverable** — and your long-headline URLs start returning 404.
+The trap: on every major core update, `dbDelta()` reconciles the live schema against WordPress's canonical schema and **shrinks `VARCHAR(1024)` back to `VARCHAR(200)`**. Unlike `TEXT`/`BLOB`, `VARCHAR` has no downsize protection, so the truncation is silent and **unrecoverable**, and your long-headline URLs start returning 404.
 
-Widening the column alone isn't enough, either: WordPress hard-codes `200` in **three** independent places — storage, slug **generation** (`sanitize_title_with_dashes()`), and collision **de-duplication** (`_truncate_post_slug()`).
+Widening the column alone isn't enough, either: WordPress hard-codes `200` in **three** independent places: storage, slug **generation** (`sanitize_title_with_dashes()`), and collision **de-duplication** (`_truncate_post_slug()`).
 
 ## What it does
 
-- **Prevents the shrink** (Layer 1) — filters `dbdelta_create_queries` so dbDelta's *desired* schema already says `1024`; it never emits a destructive `CHANGE COLUMN`. Covers the admin DB-upgrade screen, background auto-updates, and `wp core update-db`.
-- **Stops new slugs truncating** (Layer 2) — replaces `sanitize_title_with_dashes()` with a byte-for-byte copy that raises the generation cap. The copy **self-tests against core** on each update: it diffs the fork against core's live function on short inputs (where neither cap fires), so if core ever rewrites that function it alerts — and can fall back to core's generator — instead of drifting silently.
-- **Verifies + alerts** (tripwire) — after every core update it checks the real column widths, logs and (optionally) emails on a revert, and exposes a `wp asg verify` CLI command for cron.
+- **Prevents the shrink** (Layer 1): filters `dbdelta_create_queries` so dbDelta's *desired* schema already says `1024`; it never emits a destructive `CHANGE COLUMN`. Covers the admin DB-upgrade screen, background auto-updates, and `wp core update-db`.
+- **Stops new slugs truncating** (Layer 2): replaces `sanitize_title_with_dashes()` with a byte-for-byte copy that raises the generation cap. The copy **self-tests against core** on each update: it diffs the fork against core's live function on short inputs (where neither cap fires), so if core ever rewrites that function it alerts (and can fall back to core's generator) instead of drifting silently.
+- **Verifies + alerts** (tripwire): after every core update it checks the real column widths, logs and (optionally) emails on a revert, and exposes a `wp asg verify` CLI command for cron.
 
-Layer 3 (collision de-dup) only fires on slug clashes and is left optional — see the write-up.
+Layer 3 (collision de-dup) only fires on slug clashes and is left optional (see the write-up).
 
 ## Installation
 
@@ -46,7 +46,7 @@ ALTER TABLE wp_posts MODIFY post_name VARCHAR(1024) NOT NULL DEFAULT '';
 ALTER TABLE wp_terms MODIFY slug      VARCHAR(1024) NOT NULL DEFAULT '';
 ```
 
-On a large `wp_posts` (millions of rows) the `200 → 1024` change crosses InnoDB's VARCHAR length-byte boundary and forces a full table rebuild — use an online schema-change tool instead of a raw `ALTER`:
+On a large `wp_posts` (millions of rows) the `200 → 1024` change crosses InnoDB's VARCHAR length-byte boundary and forces a full table rebuild, so use an online schema-change tool instead of a raw `ALTER`:
 
 ```bash
 pt-online-schema-change \
@@ -61,7 +61,7 @@ Define before the plugin loads (e.g. in `wp-config.php`), or edit the constants 
 | Constant | Default | Meaning |
 |---|---|---|
 | `ASG_COLUMN_LEN` | `1024` | Physical column width (bytes) |
-| `ASG_SLUG_BYTES` | `1000` | Max generated slug length — under the column, leaving room for a `-2` collision suffix |
+| `ASG_SLUG_BYTES` | `1000` | Max generated slug length, under the column, leaving room for a `-2` collision suffix |
 | `ASG_ALERT_EMAIL` | *(unset)* | If defined, the tripwire (and the Layer-2 self-test) email this address on a column revert or fork drift |
 | `ASG_L2_FAILSAFE` | *(unset)* | If defined truthy, on Layer-2 drift fall back to core's generator (slugs cap at 200) until you re-sync the copy |
 
@@ -71,7 +71,7 @@ Define before the plugin loads (e.g. in `wp-config.php`), or edit the constants 
 wp asg verify
 ```
 
-Nightly cron — alert if either column ever reverts:
+Nightly cron, alert if either column ever reverts:
 
 ```bash
 0 3 * * *  cd /var/www/site && wp asg verify | grep -q REVERTED \
@@ -81,18 +81,18 @@ Nightly cron — alert if either column ever reverts:
 ## Important caveats
 
 - The tripwire restores the **column definition**, never bytes already truncated. Treat any revert as an incident: restore from backup and check your 404 logs.
-- **Never import a SQL dump taken *before* you widened the columns** — the old `CREATE TABLE` puts you back at 200. A dump of the *current* database is fine.
+- **Never import a SQL dump taken *before* you widened the columns**: the old `CREATE TABLE` puts you back at 200. A dump of the *current* database is fine.
 
 ## How it works (and why `VARCHAR(1024)` is safe)
 
-The full root-cause analysis — the `dbDelta` chain, why the fixed **191-character index prefix** means widening the column carries no index / InnoDB / utf8mb4 risk, and the production rollout for multi-million-row sites — is in the write-up:
+The full root-cause analysis (the `dbDelta` chain, why the fixed **191-character index prefix** means widening the column carries no index / InnoDB / utf8mb4 risk, and the production rollout for multi-million-row sites) is in the write-up:
 
 **→ [The 200-byte trap: why WordPress core updates break Arabic URLs](https://www.mantek.io/insights/wordpress-arabic-slug-truncation)**
 
 ## License
 
-[GPL-2.0-or-later](LICENSE) — same as WordPress.
+[GPL-2.0-or-later](LICENSE): same as WordPress.
 
 ---
 
-Built and maintained by **[ManTek Technologies](https://www.mantek.io)** — WordPress + AWS at scale, for Arabic newsrooms and beyond.
+Built and maintained by **[ManTek Technologies](https://www.mantek.io)**: WordPress + AWS at scale, for Arabic newsrooms and beyond.

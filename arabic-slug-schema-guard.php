@@ -28,7 +28,7 @@ const ASG_SCHEMA_SIG = 'post_name:1024;slug:1024';
 // define( 'ASG_ALERT_EMAIL', 'ops@example.com' );  // optional, set in wp-config.php
 // define( 'ASG_L2_FAILSAFE', true );               // optional: on Layer-2 drift, fall back to core (slugs cap at 200) until you re-sync
 
-/* LAYER 1 — PREVENTION
+/* LAYER 1: PREVENTION
  * Rewrite the canonical CREATE TABLE dbDelta diffs against, so "desired" already
  * equals the live 1024-wide column and no destructive CHANGE COLUMN is emitted. */
 add_filter( 'dbdelta_create_queries', function ( $queries ) {
@@ -45,11 +45,11 @@ add_filter( 'dbdelta_create_queries', function ( $queries ) {
     return $queries;
 } );
 
-/* LAYER 2 — GENERATION
+/* LAYER 2: GENERATION
  * Core caps new slugs at 200 bytes via utf8_uri_encode($title, 200). Swap in a
  * copy of sanitize_title_with_dashes() whose only change is the byte budget.
  * Installed conditionally: if the drift guard (below) flagged THIS core version
- * and ASG_L2_FAILSAFE is on, stay on core's default (caps at 200 — degraded but
+ * and ASG_L2_FAILSAFE is on, stay on core's default (caps at 200, degraded but
  * safe and known) rather than run a fork we know has drifted. */
 if ( get_option( 'asg_l2_status' ) === 'drift:' . $GLOBALS['wp_version']
      && defined( 'ASG_L2_FAILSAFE' ) && ASG_L2_FAILSAFE ) {
@@ -90,10 +90,10 @@ function asg_sanitize_title_with_dashes( $title, $raw_title = '', $context = 'di
     return trim( $title, '-' );
 }
 
-/* LAYER 2 DRIFT GUARD — self-test the fork against core's live implementation.
+/* LAYER 2 DRIFT GUARD: self-test the fork against core's live implementation.
  * remove_filter() only unhooks sanitize_title_with_dashes(); the function stays
  * callable, so we use core's CURRENT code as a live oracle and assert our fork
- * still agrees on SHORT inputs (where neither byte cap engages — the only thing
+ * still agrees on SHORT inputs (where neither byte cap engages, the only thing
  * the fork changed). Any divergence == core altered the cleanup logic and our
  * copy has drifted. Runs once per core version; shouts, and can fail safe. */
 add_action( 'admin_init', 'asg_guard_layer2_drift' );
@@ -105,11 +105,11 @@ function asg_guard_layer2_drift() {
         return;  // already settled for this core version
     }
     if ( ! function_exists( 'sanitize_title_with_dashes' ) ) {
-        return;  // core refactored it away — no oracle to diff against; the fork
+        return;  // core refactored it away, no oracle to diff against; the fork
                  // still runs as a standalone copy (it needs no removed function).
     }
 
-    // Deliberately SHORT fixtures so neither length cap fires — any difference is
+    // Deliberately SHORT fixtures so neither length cap fires, any difference is
     // pure cleanup-logic drift, not the byte budget.
     $fixtures = array(
         'الذكاء الاصطناعي',
@@ -131,29 +131,29 @@ function asg_guard_layer2_drift() {
 
     if ( $drift ) {
         $msg = "[Arabic Slug Schema Guard] Layer-2 DRIFT on WP {$GLOBALS['wp_version']}: core "
-             . "sanitize_title_with_dashes() no longer matches our fork — re-sync the copy.\n"
+             . "sanitize_title_with_dashes() no longer matches our fork: re-sync the copy.\n"
              . implode( "\n", $drift );
         error_log( $msg );
         if ( defined( 'ASG_ALERT_EMAIL' ) && function_exists( 'wp_mail' ) ) {
             wp_mail( ASG_ALERT_EMAIL, 'WP slug Layer-2 drift: ' . wp_parse_url( home_url(), PHP_URL_HOST ), $msg );
         }
-        update_option( 'asg_l2_status', $drifted, true );  // autoload — the fail-safe reads it every request
+        update_option( 'asg_l2_status', $drifted, true );  // autoload: the fail-safe reads it every request
         return;  // do NOT cache "ok" while drifted
     }
     update_option( 'asg_l2_status', $ok, true );
 }
 
-/* LAYER 3 — DE-DUPLICATION (optional)
+/* LAYER 3: DE-DUPLICATION (optional)
  * _truncate_post_slug() also caps at 200, but only when a slug COLLIDES and needs
- * a "-2" suffix — rare for unique headlines, and it isn't filterable. If you need
+ * a "-2" suffix, rare for unique headlines, and it isn't filterable. If you need
  * >200 bytes even on collisions, take over uniqueness here. Most sites skip this.
  *
  * add_filter( 'pre_wp_unique_post_slug', 'asg_unique_post_slug', 10, 6 );
  */
 
-/* TRIPWIRE — verify + alert after every core update
+/* TRIPWIRE: verify + alert after every core update
  * This only detects and alerts: it restores the COLUMN, never bytes already
- * truncated. Treat any revert as an incident — restore from backup. */
+ * truncated. Treat any revert as an incident: restore from backup. */
 add_action( 'upgrader_process_complete', function ( $upgrader, $extra ) {
     if ( isset( $extra['type'] ) && 'core' === $extra['type'] ) {
         delete_option( 'asg_schema_sig' );  // force a re-check on the next admin_init
@@ -167,7 +167,7 @@ add_action( 'admin_init', function () {
     $reverted = asg_reverted_columns();
     if ( $reverted ) {
         $msg = '[Arabic Slug Schema Guard] Column(s) reverted: ' . implode( ', ', $reverted )
-             . '. Long slugs were truncated — restore from backup and check 404 logs.';
+             . '. Long slugs were truncated: restore from backup and check 404 logs.';
         error_log( $msg );
         if ( defined( 'ASG_ALERT_EMAIL' ) ) {
             wp_mail( ASG_ALERT_EMAIL, 'WP slug schema reverted: ' . wp_parse_url( home_url(), PHP_URL_HOST ), $msg );
@@ -193,11 +193,11 @@ function asg_reverted_columns() {
     return $reverted;
 }
 
-/* WP-CLI — `wp asg verify` for cron-based monitoring */
+/* WP-CLI:`wp asg verify` for cron-based monitoring */
 if ( defined( 'WP_CLI' ) && WP_CLI ) {
     WP_CLI::add_command( 'asg verify', function () {
         foreach ( asg_reverted_columns() ?: array( 'ok' ) as $row ) {
-            WP_CLI::log( 'ok' === $row ? 'Schema OK — both columns at VARCHAR(1024).' : "REVERTED: {$row}" );
+            WP_CLI::log( 'ok' === $row ? 'Schema OK: both columns at VARCHAR(1024).' : "REVERTED: {$row}" );
         }
     } );
 }
