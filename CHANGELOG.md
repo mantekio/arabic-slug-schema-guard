@@ -4,6 +4,11 @@ All notable changes to **Arabic Slug Schema Guard** are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1]
+
+### Changed
+- Documentation and inline-comment cleanup in the README and the plugin source. No functional changes.
+
 ## [1.1.0]
 
 ### Added
@@ -32,5 +37,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - **Tripwire:** post-update verification of the real column widths (logs and
     optionally emails on a revert) plus a `wp asg verify` WP-CLI command.
 
+[1.1.1]: https://github.com/mantekio/arabic-slug-schema-guard/releases/tag/v1.1.1
 [1.1.0]: https://github.com/mantekio/arabic-slug-schema-guard/releases/tag/v1.1.0
 [1.0.0]: https://github.com/mantekio/arabic-slug-schema-guard/releases/tag/v1.0.0
