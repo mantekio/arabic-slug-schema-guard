@@ -37,6 +37,14 @@ cp arabic-slug-schema-guard.php wp-content/mu-plugins/
 composer require mantekio/arabic-slug-schema-guard
 ```
 
+Composer installs it as a [`wordpress-muplugin`](https://github.com/composer/installers), which has two consequences worth knowing:
+
+- **Allow the installer plugin.** On a fresh project Composer blocks `composer/installers` until you permit it. Add this to your root `composer.json` (most WordPress-Composer stacks already have it):
+  ```json
+  { "config": { "allow-plugins": { "composer/installers": true } } }
+  ```
+- **Make sure it actually loads.** It installs into `wp-content/mu-plugins/arabic-slug-schema-guard/` (a subfolder). Vanilla WordPress only auto-loads `*.php` placed *directly* in `mu-plugins/`, not in subfolders, so either rely on a mu-plugins autoloader (Bedrock and similar stacks ship one) or use the **Manual** method above to drop the single file straight into `mu-plugins/`.
+
 ### One-time: widen the columns
 
 The plugin *keeps* the columns wide; you still widen them once. On a small site:

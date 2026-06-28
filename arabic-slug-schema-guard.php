@@ -7,7 +7,7 @@
  *              are never truncated. Prevention-first: dbDelta never truncates,
  *              because the canonical schema it diffs against already says 1024.
  *              The slug fork self-tests against core on each update and can fail safe.
- * Version:     1.1.1
+ * Version:     1.1.2
  * Author:      ManTek Technologies
  * Author URI:  https://www.mantek.io
  * License:     GPL-2.0-or-later
